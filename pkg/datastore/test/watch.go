@@ -39,7 +39,7 @@ func WatchTest(t *testing.T, tester DatastoreTester) {
 		},
 		{
 			numTuples:        256,
-			expectFallBehind: true,
+			expectFallBehind: false,
 		},
 	}
 
