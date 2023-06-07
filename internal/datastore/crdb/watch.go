@@ -18,6 +18,7 @@ import (
 const (
 	queryChangefeed       = "EXPERIMENTAL CHANGEFEED FOR %s WITH updated, cursor = '%s', resolved = '1s', min_checkpoint_frequency = '0';"
 	queryChangefeedPreV22 = "EXPERIMENTAL CHANGEFEED FOR %s WITH updated, cursor = '%s', resolved = '1s';"
+	watchOverflowSleep    = 100 * time.Millisecond
 )
 
 type changeDetails struct {
@@ -119,6 +120,17 @@ func (cds *crdbDatastore) Watch(ctx context.Context, afterRevision datastore.Rev
 				})
 
 				for _, change := range toEmit {
+					for int(cds.watchBufferLength) <= len(updates) {
+						sleep := time.NewTimer(watchOverflowSleep)
+						select {
+						case <-sleep.C:
+							continue
+						case <-ctx.Done():
+							errs <- datastore.NewWatchCanceledErr()
+							return
+						}
+					}
+
 					select {
 					case updates <- change:
 					default:

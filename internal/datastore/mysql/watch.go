@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	watchSleep = 100 * time.Millisecond
+	watchSleep         = 100 * time.Millisecond
+	watchOverflowSleep = 100 * time.Millisecond
 )
 
 // Watch notifies the caller about all changes to tuples.
@@ -50,6 +51,17 @@ func (mds *Datastore) Watch(ctx context.Context, afterRevisionRaw datastore.Revi
 			// Write the staged updates to the channel
 			for _, changeToWrite := range stagedUpdates {
 				changeToWrite := changeToWrite
+
+				for int(mds.watchBufferLength) <= len(updates) {
+					sleep := time.NewTimer(watchOverflowSleep)
+					select {
+					case <-sleep.C:
+						continue
+					case <-ctx.Done():
+						errs <- datastore.NewWatchCanceledErr()
+						return
+					}
+				}
 
 				select {
 				case updates <- &changeToWrite:
