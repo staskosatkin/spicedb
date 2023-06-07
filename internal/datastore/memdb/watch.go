@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/go-memdb"
 
@@ -12,6 +13,7 @@ import (
 )
 
 const errWatchError = "watch error: %w"
+const watchOverflowSleep = 100 * time.Millisecond
 
 func (mdb *memdbDatastore) Watch(ctx context.Context, afterRevision datastore.Revision) (<-chan *datastore.RevisionChanges, <-chan error) {
 	ar := afterRevision.(revision.Decimal)
@@ -39,6 +41,17 @@ func (mdb *memdbDatastore) Watch(ctx context.Context, afterRevision datastore.Re
 			for _, changeToWrite := range stagedUpdates {
 				if len(changeToWrite.Changes) == 0 {
 					continue
+				}
+
+				for int(mdb.watchBufferLength) <= len(updates) {
+					sleep := time.NewTimer(watchOverflowSleep)
+					select {
+					case <-sleep.C:
+						continue
+					case <-ctx.Done():
+						errs <- datastore.NewWatchCanceledErr()
+						return
+					}
 				}
 
 				select {
